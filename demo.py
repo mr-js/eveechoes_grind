@@ -43,49 +43,41 @@ def resize_image(image, max_width, max_height):
         return resized_image
     return image
 
+
 def is_near_existing_targets(new_coord, targets, search_radius):
     for coord in targets:
         if (abs(new_coord[0] - coord[0]) <= search_radius) and (abs(new_coord[1] - coord[1]) <= search_radius):
             return True
     return False
 
+
 def scan(scale, threshold, search_radius, borders):
-    # scales = np.linspace(0.5, 1.5, 20)
     log.debug('Scaning a targets on screen...')
     screen_gray, screen_width, screen_height = capture_screen()
     target_templates = dict()
-    
     for file in os.listdir('target_templates'):
         target_templates[file] = load_template(os.path.join('target_templates', file))
-    
     all_targets = []
-
     for target_template in target_templates.keys():
         found_targets = []
         resized_template = cv2.resize(target_templates[target_template], (0, 0), fx=scale, fy=scale)
         if resized_template.shape[0] > screen_gray.shape[0] or resized_template.shape[1] > screen_gray.shape[1]:
             continue
-        
         res = cv2.matchTemplate(screen_gray, resized_template, cv2.TM_CCOEFF_NORMED)
         loc = np.where(res >= threshold)
-        
         for pt in zip(*loc[::-1]):
             top_left = pt
             bottom_right = (top_left[0] + resized_template.shape[1], top_left[1] + resized_template.shape[0])
             cv2.rectangle(screen_gray, top_left, bottom_right, (0, 255, 0), 2)
-            
             bottom_left = (bottom_right[0], top_left[1] + resized_template.shape[0])
-            offset_x = -search_radius
-            offset_y = search_radius
+            offset_x = -resized_template.shape[0]/2
+            offset_y = -resized_template.shape[1]/2
             click_x = int((bottom_left[0] + offset_x) * screen_width / screen_gray.shape[1])
             click_y = int((bottom_left[1] + offset_y) * screen_height / screen_gray.shape[0])
-
             if borders[0] <= click_x <= (borders[0] + borders[2]) and borders[1] <= click_y <= (borders[1] + borders[3]):
-                enemy = (click_x, click_y)
-                if not is_near_existing_targets(enemy, found_targets, search_radius):
-                    found_targets.append(enemy)
-        
-        
+                target = (click_x, click_y)
+                if not is_near_existing_targets(target, found_targets, search_radius):
+                    found_targets.append(target)
         all_targets.append({target_template: found_targets})
 
     # DEMO
@@ -103,9 +95,13 @@ def scan(scale, threshold, search_radius, borders):
 def element_click(target):
     log.debug(f'Clicking the target {target}...')
     click_x, click_y = target
-    pyautogui.doubleClick(click_x, click_y)
+    # DEMO
+    # pyautogui.moveTo(click_x, click_y)
+    # DEMO
+    pyautogui.click(click_x, click_y)
     log.debug('Clicked')
     time.sleep(1)
+
 
 def find_window(windows_title):
     window = None
@@ -120,9 +116,9 @@ def find_window(windows_title):
 
 def main():
     scale=1.0
-    threshold=0.6
+    threshold=0.8
     search_radius = 20
-    target_window = 'main_screen.png'
+    target_window = 'BlueStacks App Player 1'
     window = find_window(target_window)
     if window and not window.isActive:
         borders=(window.left, window.top, window.width, window.height)
@@ -139,6 +135,9 @@ def main():
                     log.debug(f'Done')
                     break
             log.debug(f'No detected. Waiting...')
+            # DEMO
+            # break
+            # DEMO
             time.sleep(5)
 
 
