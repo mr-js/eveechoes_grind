@@ -10,10 +10,11 @@ import timeit
 import sys
 
 
-class Grind():
-    def __init__(self, windows_title):
-        self.DEMO = True
-        self.DEBUG = False        
+class GrindEngine():
+    def __init__(self, demo=True, debug=False, scale = 1.0, step_by_step=False, windows_title='BlueStacks App Player 1'):
+        self.DEMO = demo
+        self.DEBUG = debug
+        self.step_by_step = step_by_step
         logging.basicConfig(
             handlers=[
                     logging.StreamHandler(),
@@ -29,7 +30,7 @@ class Grind():
             img = Image.open(os.path.join('demo', 'demo.png'))
             img.show()
             windows_title = '.PNG'
-        self.scale = 1.0
+        self.scale = scale
         if self._сapture_window(windows_title):
             self.log.info('STARTED')
         else:
@@ -95,14 +96,15 @@ class Grind():
         return False
 
 
-    def scan(self, template_file, scan_area, scan_threshold, results_preview=False):
+    def scan(self, template_file, scan_area, scan_threshold):
+        self.log.debug(f'Scan started for "{template_file}" [scale x{self.scale}]  ')
         scan_start_time = timeit.default_timer()
         screen_gray, screen_width, screen_height = self._capture_screen()
         target_template = self._load_template(os.path.join('templates', template_file))
         found_targets = []
         resized_template = cv2.resize(target_template, (0, 0), fx=self.scale, fy=self.scale)
         if resized_template.shape[0] > screen_gray.shape[0] or resized_template.shape[1] > screen_gray.shape[1]:
-            self.log.debug('passed (resized_template > screen_gray)')
+            self.log.warn('Size of template > size of screen)')
             return found_targets
         res = cv2.matchTemplate(screen_gray, resized_template, cv2.TM_CCOEFF_NORMED)
         loc = np.where(res >= scan_threshold)
@@ -121,17 +123,24 @@ class Grind():
                 if not self._is_near_existing_targets(target, found_targets, search_radius):
                     found_targets.append(target)
         scan_end_time = timeit.default_timer()
-        report = f'Scan completed for "{template_file}" with [{scan_threshold=}] at {round(scan_end_time - scan_start_time, 1)} sec. Results: {len(found_targets)} items founded {found_targets}'
-        if results_preview:
+        report = f'Scan completed for "{template_file}" [size x {self.scale}: {target_template.shape} => {resized_template.shape}] with [{scan_threshold=}] in area {scan_area} at {round(scan_end_time - scan_start_time, 1)} sec: {len(found_targets)} items founded'
+        if self.step_by_step:
             # screen_gray = self._resize_image(screen_gray, 1920, 1080)
             cv2.imshow(report, screen_gray)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
+            self.delay(1000)
         self.log.debug(report)
-        if len(found_targets) == 1:
-            return found_targets[0]
+        number_of_found_targets = len(found_targets)
+        if number_of_found_targets == 1:
+            result = found_targets[0]
+        elif number_of_found_targets > 1:
+            self.log.warn('Multiple targets detected for this pattern (see the detailed debug log): collision possible.')
+            scan_index = 0
+            result = found_targets[min(scan_index, number_of_found_targets-1)]
         else:
-            return None
+            result = None
+        return result
         
 
     def click(self, target):
@@ -147,39 +156,19 @@ class Grind():
         time.sleep(timeout/1000)
 
 
-    def scenary_safety_check_around(self):
-                self.log.info('Safety check around')
-                self.log.info('Checking if it\'s in the garage')
-                button_from_dock = self.scan('button_from_dock.png', scan_area=self.windows_area, scan_threshold=0.7)
-                if not button_from_dock:
-                    self.log.info('We\'re not in a garage')
-                    return 10
-                self.delay(500)
-                self.log.info('Checking chat availability')
-                button_chat = self.scan('button_chat.png', scan_area=self.windows_area, scan_threshold=0.8)
-                if not button_chat:
-                    self.log.info('Chat is unavailable')
-                    return 20
-                self.click(button_chat)
-                self.delay(500)
-                self.log.info('Checking enemy statistics')
-                common_around = self.scan('common_around.png', scan_area=self.windows_area, scan_threshold=0.45)
-                if not common_around:
-                    self.log.info('Enemy statistics are not available')
-                    return 30
-                self.delay(500)
-                self.log.info('Checking for enemies around')
-                safe_around = self.scan('safe_around.png', scan_area=self.windows_area, scan_threshold=0.8)
-                if not safe_around:
-                    self.log.info('There are enemies all around now. The flight\'s been delayed.')
-                    return 40
-                else:
-                    self.log.info('There are no enemies. Let\'s go!')
-                    self.click(button_from_dock)
-                    return 0
-
-
 if __name__ == "__main__":
-    grind = Grind('BlueStacks App Player 1')
-    grind._template_calibrate('common_around.png')
-    grind.scenary_safety_check_around()
+    # ge = GrindEngine()
+    # ge._template_calibrate('demo.png')
+    try:
+        if len(sys.argv) <= 1:
+            file = 'scenaries.py'
+        else:
+            file = sys.argv[1]            
+        with open(file, 'r') as f:
+            code = f.read()
+        compiled_code = compile(code, "<string>", "exec")
+        exec(compiled_code)
+    except Exception as e:
+        print(f'ERROR ({str(e)})')
+    finally:
+       ...
