@@ -8,7 +8,25 @@ import os
 import logging
 import timeit
 import sys
+import code
 
+import builtins
+if not hasattr(builtins,'help'):
+    import _sitebuiltins
+
+    if os.sep == '\\':
+        eof = 'Ctrl-Z plus Return'
+    else:
+        eof = 'Ctrl-D (i.e. EOF)'
+
+    builtins.quit = _sitebuiltins.Quitter('quit', eof)
+    builtins.exit = _sitebuiltins.Quitter('exit', eof)
+        
+    builtins.help = _sitebuiltins._Helper()
+
+    builtins.copyright = _sitebuiltins._Printer("copyright", sys.copyright)   
+    
+# code.InteractiveConsole().interact()
 
 class GrindEngine():
     def __init__(self, demo=True, debug=False, scale = 1.0, step_by_step=False, windows_title='BlueStacks App Player 1'):
@@ -32,7 +50,7 @@ class GrindEngine():
             windows_title = '.PNG'
         self.scale = scale
         if self._сapture_window(windows_title):
-            self.log.info('STARTED')
+            self.log.info('Target window has been captured')
         else:
             sys.exit()
 
@@ -70,15 +88,6 @@ class GrindEngine():
         return template
 
 
-    def _template_calibrate(self, template):
-        current_debug_mode = self.log.level
-        self.log.setLevel(logging.DEBUG)
-        for scan_threshold in range(100, 950, 50):
-            self.scan(template, scan_area=self.windows_area, scan_threshold=scan_threshold/1000)
-        self.log.setLevel(current_debug_mode)
-
-
-
     def _resize_image(self, image, max_width, max_height):
         h, w = image.shape[:2]
         if w > max_width or h > max_height:
@@ -96,6 +105,39 @@ class GrindEngine():
         return False
 
 
+    def template_calibrate(self, template, start=0.1, end=0.95, step=0.05):
+        """
+
+        Calibrates the specified pattern for the screen image
+
+        Parameters:
+        template -- name of the pattern file for sensitivity calibration (mandatory parameter)
+        start - initial sensitivity value (optional parameter: if not specified, value 0.1 is used)
+        end - final sensitivity value (optional parameter: if not set, value 0.9 is used)
+        step - step of sensitivity change within the specified range (optional parameter: if not specified, the value 0.05 is used).
+
+        For example:
+        
+        template_calibrate('target.png', start=0.1, end=0.95, step=0.05)
+
+        This function will calibrate the 'target.png' pattern from the 'templates' folder on the 'demo.png' image from the 'demo' folder, starting with a sensitivity of 0.1 and ending with a sensitivity of 0.9, adding 0.05 each time in the process over the specified range. Before running the function, you should make sure that the above graphic files are located in their directories and are named accordingly.
+        
+        """
+        self.log.warning('Template calibration started')
+        current_demo = self.DEMO
+        self.DEMO = True
+        current_step_by_step = self.step_by_step
+        self.step_by_step = False
+        current_debug_mode = self.log.level
+        self.log.setLevel(logging.DEBUG)
+        for scan_threshold in range(round(100*start), round(100*end), round(100*step)):
+            self.scan(template, scan_area=self.windows_area, scan_threshold=scan_threshold/100)
+        self.log.setLevel(current_debug_mode)
+        self.step_by_step = current_step_by_step
+        self.DEMO = current_demo
+        self.log.warning('Template calibration finished')
+    
+    
     def scan(self, template_file, scan_area, scan_threshold):
         self.log.debug(f'Scan started for "{template_file}" [scale x{self.scale}]  ')
         scan_start_time = timeit.default_timer()
@@ -104,7 +146,7 @@ class GrindEngine():
         found_targets = []
         resized_template = cv2.resize(target_template, (0, 0), fx=self.scale, fy=self.scale)
         if resized_template.shape[0] > screen_gray.shape[0] or resized_template.shape[1] > screen_gray.shape[1]:
-            self.log.warn('Size of template > size of screen)')
+            self.log.warning('Size of template > size of screen)')
             return found_targets
         res = cv2.matchTemplate(screen_gray, resized_template, cv2.TM_CCOEFF_NORMED)
         loc = np.where(res >= scan_threshold)
@@ -135,21 +177,23 @@ class GrindEngine():
         if number_of_found_targets == 1:
             result = found_targets[0]
         elif number_of_found_targets > 1:
-            self.log.warn('Multiple targets detected for this pattern (see the detailed debug log): collision possible.')
+            self.log.warning('Multiple targets detected for this pattern (see the detailed debug log): collision possible.')
             scan_index = 0
             result = found_targets[min(scan_index, number_of_found_targets-1)]
         else:
             result = None
         return result
-        
 
-    def click(self, target):
+
+    def click(self, target, correction=(0, 0)):
         click_x, click_y = target
+        if correction:
+            click_x, click_y = click_x + correction[0], click_y + correction[1]
         if self.DEMO:
             pyautogui.moveTo(click_x, click_y)
         else:
             pyautogui.click(click_x, click_y)
-        self.log.debug(f'Clicked {click_x, click_y}')
+        self.log.debug(f'Clicked {click_x, click_y} ({correction=})')
 
     
     def delay(self, timeout):
@@ -157,8 +201,7 @@ class GrindEngine():
 
 
 if __name__ == "__main__":
-    # ge = GrindEngine()
-    # ge._template_calibrate('demo.png')
+    print('STARTED')
     try:
         if len(sys.argv) <= 1:
             file = 'scenaries.py'
@@ -171,4 +214,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f'ERROR ({str(e)})')
     finally:
-       ...
+        print('FINISHED')
+        input('Press any key to continue')
